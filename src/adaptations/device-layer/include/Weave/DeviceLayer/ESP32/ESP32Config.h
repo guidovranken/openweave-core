@@ -92,6 +92,11 @@ public:
     // NVS Namespace helper functions.
     static WEAVE_ERROR EnsureNamespace(const char * ns);
     static WEAVE_ERROR ClearNamespace(const char * ns);
+
+protected:
+
+    static const char * GetFileId(Key key);
+    static const char * GetRecordKey(Key key);
 };
 
 struct ESP32Config::Key
@@ -101,6 +106,16 @@ struct ESP32Config::Key
 
     bool operator==(const Key & other) const;
 };
+
+inline const char * ESP32Config::GetFileId(Key configKey)
+{
+    return configKey.Namespace;
+}
+
+inline const char * ESP32Config::GetRecordKey(Key configKey)
+{
+    return configKey.Name;
+}
 
 inline bool ESP32Config::Key::operator==(const Key & other) const
 {

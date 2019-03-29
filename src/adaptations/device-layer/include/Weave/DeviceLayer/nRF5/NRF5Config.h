@@ -41,7 +41,6 @@ constexpr inline uint32_t NRF5ConfigKey(uint16_t fileId, uint16_t recordId)
     return static_cast<uint32_t>(fileId) << 16 | recordId;
 }
 
-
 /**
  * Provides functions and definitions for accessing persisted device configuration
  * on platforms based on the Nordic nRF5 SDK.

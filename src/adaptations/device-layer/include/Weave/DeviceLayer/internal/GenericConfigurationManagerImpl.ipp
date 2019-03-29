@@ -602,13 +602,13 @@ void GenericConfigurationManagerImpl<ImplClass>::_GetEventIdCounterStorageKeys(:
     int i = 0;
 
 #if WEAVE_DEVICE_CONFIG_EVENT_LOGGING_DEBUG_EVENTS
-    eidcStorageKeys[i++] = ImplClass::kConfigKey_DebugEventIdCounter;
+    eidcStorageKeys[i++] = ImplClass::GetRecordKey(ImplClass::kConfigKey_DebugEventIdCounter);
 #endif
 #if WEAVE_DEVICE_CONFIG_EVENT_LOGGING_INFO_EVENTS
-    eidcStorageKeys[i++] = ImplClass::kConfigKey_InfoEventIdCounter;
+    eidcStorageKeys[i++] = ImplClass::GetRecordKey(ImplClass::kConfigKey_InfoEventIdCounter);
 #endif
-    eidcStorageKeys[i++] = ImplClass::kConfigKey_ProdEventIdCounter;
-    eidcStorageKeys[i] = ImplClass::kConfigKey_CritEventIdCounter;
+    eidcStorageKeys[i++] = ImplClass::GetRecordKey(ImplClass::kConfigKey_ProdEventIdCounter);
+    eidcStorageKeys[i]   = ImplClass::GetRecordKey(ImplClass::kConfigKey_CritEventIdCounter);
 }
 
 template<class ImplClass>
