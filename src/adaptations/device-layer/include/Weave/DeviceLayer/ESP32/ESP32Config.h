@@ -67,6 +67,10 @@ public:
     static const Key kConfigKey_LastUsedEpochKeyId;
     static const Key kConfigKey_FailSafeArmed;
     static const Key kConfigKey_WiFiStationSecType;
+    static const Key kConfigKey_CritEventIdCounter;
+    static const Key kConfigKey_ProdEventIdCounter;
+    static const Key kConfigKey_InfoEventIdCounter;
+    static const Key kConfigKey_DebugEventIdCounter;
 
     static const char kGroupKeyNamePrefix[];
 

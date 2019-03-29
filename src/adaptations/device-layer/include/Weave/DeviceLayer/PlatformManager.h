@@ -32,6 +32,7 @@ namespace DeviceLayer {
 
 class ConnectivityManagerImpl;
 class ConfigurationManagerImpl;
+class EventLoggingManager;
 class TraitManager;
 namespace Internal {
 class FabricProvisioningServer;
@@ -80,6 +81,7 @@ private:
     friend class ConnectivityManagerImpl;
     template<class> friend class Internal::GenericConfigurationManagerImpl;
     friend class ConfigurationManagerImpl;
+    friend class EventLoggingManager;
     friend class TraitManager;
     friend class TimeSyncManager;
     friend class Internal::FabricProvisioningServer;

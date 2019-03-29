@@ -28,6 +28,7 @@
 #include <Weave/DeviceLayer/PlatformManager.h>
 #include <Weave/DeviceLayer/ConfigurationManager.h>
 #include <Weave/DeviceLayer/ConnectivityManager.h>
+#include <Weave/DeviceLayer/EventLoggingManager.h>
 #include <Weave/DeviceLayer/TraitManager.h>
 #include <Weave/DeviceLayer/TimeSyncManager.h>
 #if WEAVE_DEVICE_CONFIG_ENABLE_THREAD
