@@ -32,6 +32,8 @@
 #include <Weave/Profiles/network-provisioning/NetworkProvisioning.h>
 #include <Weave/DeviceLayer/internal/DeviceNetworkInfo.h>
 #include <Weave/Support/crypto/WeaveRNG.h>
+#include <Weave/Support/TraitEventUtils.h>
+#include <nest/trait/network/TelemetryNetworkWpanTrait.h>
 
 #include <openthread/thread.h>
 #include <openthread/tasklet.h>
@@ -40,6 +42,7 @@
 #include <openthread/dataset_ftd.h>
 
 using namespace ::nl::Weave::Profiles::NetworkProvisioning;
+using namespace Schema::Nest::Trait::Network;
 
 extern "C" void otSysProcessDrivers(otInstance *aInstance);
 
@@ -54,6 +57,9 @@ static_assert(DeviceNetworkInfo::kThreadExtendedPANIdLength == OT_EXT_PAN_ID_SIZ
 static_assert(DeviceNetworkInfo::kThreadMeshPrefixLength == OT_MESH_LOCAL_PREFIX_SIZE);
 static_assert(DeviceNetworkInfo::kThreadNetworkKeyLength == OT_MASTER_KEY_SIZE);
 static_assert(DeviceNetworkInfo::kThreadPSKcLength == OT_PSKC_MAX_SIZE);
+
+static WEAVE_ERROR LogThreadTopologyEntries(nl::Weave::Profiles::DataManagement_Current::event_id_t parentEventId,
+                                            otNeighborInfo *neighborInfoTable, uint32_t neighborInfoTableSize);
 
 // Fully instantiate the generic implementation class in whatever compilation unit includes this file.
 template class GenericThreadStackManagerImpl_OpenThread<ThreadStackManagerImpl>;
@@ -393,6 +399,407 @@ bool GenericThreadStackManagerImpl_OpenThread<ImplClass>::_HaveMeshConnectivity(
 
     return res;
 }
+
+template<class ImplClass>
+WEAVE_ERROR GenericThreadStackManagerImpl_OpenThread<ImplClass>::_GetAndLogThreadStatsCounters(void)
+{
+    WEAVE_ERROR err = WEAVE_NO_ERROR;
+    nl::Weave::Profiles::DataManagement_Current::event_id_t eventId;
+    Schema::Nest::Trait::Network::TelemetryNetworkWpanTrait::NetworkWpanStatsEvent counterEvent = { 0 };
+    const otMacCounters *macCounters;
+    const otIpCounters *ipCounters;
+    otDeviceRole role;
+
+    Impl()->LockThreadStack();
+
+    // Get Mac Counters
+    macCounters = otLinkGetCounters(mOTInst);
+
+    // Rx Counters
+    counterEvent.phyRx                = macCounters->mRxTotal;
+    counterEvent.macUnicastRx         = macCounters->mRxUnicast;
+    counterEvent.macBroadcastRx       = macCounters->mRxBroadcast;
+    counterEvent.macRxData            = macCounters->mRxData;
+    counterEvent.macRxDataPoll        = macCounters->mRxDataPoll;
+    counterEvent.macRxBeacon          = macCounters->mRxBeacon;
+    counterEvent.macRxBeaconReq       = macCounters->mRxBeaconRequest;
+    counterEvent.macRxOtherPkt        = macCounters->mRxOther;
+    counterEvent.macRxFilterWhitelist = macCounters->mRxAddressFiltered;
+    counterEvent.macRxFilterDestAddr  = macCounters->mRxDestAddrFiltered;
+
+    // Tx Counters
+    counterEvent.phyTx          = macCounters->mTxTotal;
+    counterEvent.macUnicastTx   = macCounters->mTxUnicast;
+    counterEvent.macBroadcastTx = macCounters->mTxBroadcast;
+    counterEvent.macTxAckReq    = macCounters->mTxAckRequested;
+    counterEvent.macTxNoAckReq  = macCounters->mTxNoAckRequested;
+    counterEvent.macTxAcked     = macCounters->mTxAcked;
+    counterEvent.macTxData      = macCounters->mTxData;
+    counterEvent.macTxDataPoll  = macCounters->mTxDataPoll;
+    counterEvent.macTxBeacon    = macCounters->mTxBeacon;
+    counterEvent.macTxBeaconReq = macCounters->mTxBeaconRequest;
+    counterEvent.macTxOtherPkt  = macCounters->mTxOther;
+    counterEvent.macTxRetry     = macCounters->mTxRetry;
+
+    // Tx Error Counters
+    counterEvent.macTxFailCca = macCounters->mTxErrCca;
+
+    // Rx Error Counters
+    counterEvent.macRxFailDecrypt         = macCounters->mRxErrSec;
+    counterEvent.macRxFailNoFrame         = macCounters->mRxErrNoFrame;
+    counterEvent.macRxFailUnknownNeighbor = macCounters->mRxErrUnknownNeighbor;
+    counterEvent.macRxFailInvalidSrcAddr  = macCounters->mRxErrInvalidSrcAddr;
+    counterEvent.macRxFailFcs             = macCounters->mRxErrFcs;
+    counterEvent.macRxFailOther           = macCounters->mRxErrOther;
+
+    // Get Ip Counters
+    ipCounters = otThreadGetIp6Counters(mOTInst);
+
+    // Ip Counters
+    counterEvent.ipTxSuccess = ipCounters->mTxSuccess;
+    counterEvent.ipRxSuccess = ipCounters->mRxSuccess;
+    counterEvent.ipTxFailure = ipCounters->mTxFailure;
+    counterEvent.ipRxFailure = ipCounters->mRxFailure;
+
+    // TODO
+    // counterEvent.channel = static_cast<uint8_t>(NMUtilities::GetChannel6LoWPAN());
+
+    role = otThreadGetDeviceRole(mOTInst);
+
+    switch (role)
+    {
+    case OT_DEVICE_ROLE_LEADER:
+        counterEvent.nodeType |= TelemetryNetworkWpanTrait::NODE_TYPE_LEADER;
+        // Intentional fall-through: if it's a leader, then it's also a router
+    case OT_DEVICE_ROLE_ROUTER:
+        counterEvent.nodeType |= TelemetryNetworkWpanTrait::NODE_TYPE_ROUTER;
+        break;
+    case OT_DEVICE_ROLE_CHILD:
+    case OT_DEVICE_ROLE_DISABLED:
+    case OT_DEVICE_ROLE_DETACHED:
+    default:
+        counterEvent.nodeType = 0;
+        break;
+    }
+
+    counterEvent.threadType = TelemetryNetworkWpanTrait::THREAD_TYPE_OPENTHREAD;
+
+    WeaveLogProgress(DeviceLayer,
+                     "Rx Counters:\n"
+                     "PHY Rx Total:                 %d\n"
+                     "MAC Rx Unicast:               %d\n"
+                     "MAC Rx Broadcast:             %d\n"
+                     "MAC Rx Data:                  %d\n"
+                     "MAC Rx Data Polls:            %d\n"
+                     "MAC Rx Beacons:               %d\n"
+                     "MAC Rx Beacon Reqs:           %d\n"
+                     "MAC Rx Other:                 %d\n"
+                     "MAC Rx Filtered Whitelist:    %d\n"
+                     "MAC Rx Filtered DestAddr:     %d\n",
+                     counterEvent.phyRx, counterEvent.macUnicastRx, counterEvent.macBroadcastRx, counterEvent.macRxData,
+                     counterEvent.macRxDataPoll, counterEvent.macRxBeacon, counterEvent.macRxBeaconReq, counterEvent.macRxOtherPkt,
+                     counterEvent.macRxFilterWhitelist, counterEvent.macRxFilterDestAddr);
+
+    WeaveLogProgress(DeviceLayer,
+                     "Tx Counters:\n"
+                     "PHY Tx Total:                 %d\n"
+                     "MAC Tx Unicast:               %d\n"
+                     "MAC Tx Broadcast:             %d\n"
+                     "MAC Tx Data:                  %d\n"
+                     "MAC Tx Data Polls:            %d\n"
+                     "MAC Tx Beacons:               %d\n"
+                     "MAC Tx Beacon Reqs:           %d\n"
+                     "MAC Tx Other:                 %d\n"
+                     "MAC Tx Retry:                 %d\n"
+                     "MAC Tx CCA Fail:              %d\n",
+                     counterEvent.phyTx, counterEvent.macUnicastTx, counterEvent.macBroadcastTx, counterEvent.macTxData,
+                     counterEvent.macTxDataPoll, counterEvent.macTxBeacon, counterEvent.macTxBeaconReq, counterEvent.macTxOtherPkt,
+                     counterEvent.macTxRetry, counterEvent.macTxFailCca);
+
+    WeaveLogProgress(DeviceLayer,
+                     "Failure Counters:\n"
+                     "MAC Rx Decrypt Fail:          %d\n"
+                     "MAC Rx No Frame Fail:         %d\n"
+                     "MAC Rx Unknown Neighbor Fail: %d\n"
+                     "MAC Rx Invalid Src Addr Fail: %d\n"
+                     "MAC Rx FCS Fail:              %d\n"
+                     "MAC Rx Other Fail:            %d\n",
+                     counterEvent.macRxFailDecrypt, counterEvent.macRxFailNoFrame, counterEvent.macRxFailUnknownNeighbor,
+                     counterEvent.macRxFailInvalidSrcAddr, counterEvent.macRxFailFcs, counterEvent.macRxFailOther);
+
+    eventId = nl::LogEvent(&counterEvent);
+    WeaveLogProgress(DeviceLayer, "OpenThread Tolopoly Stats event: %u\n", eventId);
+
+    Impl()->UnlockThreadStack();
+
+    return err;
+}
+
+template<class ImplClass>
+WEAVE_ERROR GenericThreadStackManagerImpl_OpenThread<ImplClass>::_GetAndLogThreadTopologyMinimal(void)
+{
+    WEAVE_ERROR err = WEAVE_NO_ERROR;
+    otError otErr;
+    nl::Weave::Profiles::DataManagement_Current::event_id_t eventId;
+    Schema::Nest::Trait::Network::TelemetryNetworkWpanTrait::NetworkWpanTopoMinimalEvent topologyEvent = { 0 };
+    const otExtAddress *extAddress;
+
+    Impl()->LockThreadStack();
+
+    topologyEvent.rloc16 = otThreadGetRloc16(mOTInst);
+
+    // Router ID is the top 6 bits of the RLOC
+    topologyEvent.routerId = (topologyEvent.rloc16 >> 10) & 0x3f;
+
+    topologyEvent.leaderRouterId = otThreadGetLeaderRouterId(mOTInst);
+
+    otErr = otThreadGetParentAverageRssi(mOTInst, &topologyEvent.parentAverageRssi);
+    VerifyOrExit(otErr == OT_ERROR_NONE, err = MapOpenThreadError(otErr));
+
+    otErr = otThreadGetParentLastRssi(mOTInst, &topologyEvent.parentLastRssi);
+    VerifyOrExit(otErr == OT_ERROR_NONE, err = MapOpenThreadError(otErr));
+
+    topologyEvent.partitionId = otThreadGetPartitionId(mOTInst);
+
+    extAddress = otLinkGetExtendedAddress(mOTInst);
+
+    topologyEvent.extAddress.mBuf = (uint8_t *)extAddress;
+    topologyEvent.extAddress.mLen = sizeof(otExtAddress);
+
+    topologyEvent.instantRssi = otPlatRadioGetRssi(mOTInst);
+
+    WeaveLogProgress(DeviceLayer,
+                     "Thread Topology:\n"
+                     "RLOC16:           %04X\n"
+                     "Router ID:        %u\n"
+                     "Leader Router ID: %u\n"
+                     "Parent Avg RSSI:  %d\n"
+                     "Parent Last RSSI: %d\n"
+                     "Partition ID:     %d\n"
+                     "Extended Address: %02X%02X:%02X%02X:%02X%02X:%02X%02X\n"
+                     "Instant RSSI:     %d\n",
+                     topologyEvent.rloc16, topologyEvent.routerId, topologyEvent.leaderRouterId, topologyEvent.parentAverageRssi,
+                     topologyEvent.parentLastRssi, topologyEvent.partitionId, topologyEvent.extAddress.mBuf[0], topologyEvent.extAddress.mBuf[1],
+                     topologyEvent.extAddress.mBuf[2], topologyEvent.extAddress.mBuf[3], topologyEvent.extAddress.mBuf[4],
+                     topologyEvent.extAddress.mBuf[5], topologyEvent.extAddress.mBuf[6], topologyEvent.extAddress.mBuf[7], topologyEvent.instantRssi);
+
+    eventId = nl::LogEvent(&topologyEvent);
+    WeaveLogProgress(DeviceLayer, "Topology event: %u\n", eventId);
+
+    Impl()->UnlockThreadStack();
+
+exit:
+    if (err != WEAVE_NO_ERROR)
+    {
+        WeaveLogError(DeviceLayer, "GetAndLogThreadTopologyMinimul failed: %s", nl::ErrorStr(err));
+    }
+
+    return err;
+}
+
+#define TELEM_NEIGHBOR_TABLE_SIZE (64)
+
+template<class ImplClass>
+WEAVE_ERROR GenericThreadStackManagerImpl_OpenThread<ImplClass>::_GetAndLogThreadTopologyFull(void)
+{
+    WEAVE_ERROR err = WEAVE_NO_ERROR;
+    otError otErr;
+    nl::Weave::Profiles::DataManagement_Current::event_id_t eventId;
+    Schema::Nest::Trait::Network::TelemetryNetworkWpanTrait::NetworkWpanTopoFullEvent topologyEvent = { 0 };
+    otIp6Address * leaderAddr;
+    uint8_t * networkData;
+    uint8_t * stableNetworkData;
+    uint8_t networkDataLen = 0;
+    uint8_t stableNetworkDataLen = 0;
+    const otExtAddress * extAddress;
+    otNeighborInfo neighborInfo[TELEM_NEIGHBOR_TABLE_SIZE];
+    otNeighborInfoIterator iter;
+    otNeighborInfoIterator iterCopy;
+
+    Impl()->LockThreadStack();
+
+    topologyEvent.rloc16 = otThreadGetRloc16(mOTInst);
+
+    // Router ID is the top 6 bits of the RLOC
+    topologyEvent.routerId = (topologyEvent.rloc16 >> 10) & 0x3f;
+
+    topologyEvent.leaderRouterId = otThreadGetLeaderRouterId(mOTInst);
+
+    memset(leaderAddr->mFields.m8, 0, OT_IP6_ADDRESS_SIZE);
+
+    otErr = otThreadGetLeaderRloc(mOTInst, leaderAddr);
+    VerifyOrExit(otErr == OT_ERROR_NONE, err = MapOpenThreadError(otErr));
+
+    topologyEvent.leaderAddress.mBuf = leaderAddr->mFields.m8;
+    topologyEvent.leaderAddress.mLen = OT_IP6_ADDRESS_SIZE;
+
+    WeaveLogProgress(DeviceLayer, "Leader Address:        %02X%02X:%02X%02X:%02X%02X:%02X%02X:%02X%02X:%02X%02X:%02X%02X:%02X%02X\n",
+                     leaderAddr->mFields.m8[0], leaderAddr->mFields.m8[1], leaderAddr->mFields.m8[2], leaderAddr->mFields.m8[3],
+                     leaderAddr->mFields.m8[4], leaderAddr->mFields.m8[5], leaderAddr->mFields.m8[6], leaderAddr->mFields.m8[7],
+                     leaderAddr->mFields.m8[8], leaderAddr->mFields.m8[9], leaderAddr->mFields.m8[10], leaderAddr->mFields.m8[11],
+                     leaderAddr->mFields.m8[12], leaderAddr->mFields.m8[13], leaderAddr->mFields.m8[14], leaderAddr->mFields.m8[15]);
+
+    topologyEvent.leaderWeight = otThreadGetLeaderWeight(mOTInst);
+
+// TODO: enable
+//    topologyEvent.leaderLocalWeight = otThreadGetLocalLeaderWeight(mOTInst);
+
+    otErr = otNetDataGet(mOTInst, false, networkData, &networkDataLen);
+    VerifyOrExit(otErr == OT_ERROR_NONE, err = MapOpenThreadError(otErr));
+
+    topologyEvent.networkData.mBuf = networkData;
+    topologyEvent.networkData.mLen = networkDataLen;
+
+    topologyEvent.networkDataVersion = otNetDataGetVersion(mOTInst);
+
+    otErr = otNetDataGet(mOTInst, true, stableNetworkData, &stableNetworkDataLen);
+    VerifyOrExit(otErr == OT_ERROR_NONE, err = MapOpenThreadError(otErr));
+
+    topologyEvent.stableNetworkData.mBuf = stableNetworkData;
+    topologyEvent.stableNetworkData.mLen = stableNetworkDataLen;
+
+    topologyEvent.stableNetworkDataVersion = otNetDataGetStableVersion(mOTInst);
+
+    // Deprecated property
+    topologyEvent.preferredRouterId = -1;
+
+    extAddress = otLinkGetExtendedAddress(mOTInst);
+
+    topologyEvent.extAddress.mBuf = (uint8_t *)extAddress;
+    topologyEvent.extAddress.mLen = sizeof(otExtAddress);
+
+    topologyEvent.partitionId = otThreadGetPartitionId(mOTInst);
+
+    topologyEvent.instantRssi = otPlatRadioGetRssi(mOTInst);
+
+    iter = OT_NEIGHBOR_INFO_ITERATOR_INIT;
+    iterCopy = OT_NEIGHBOR_INFO_ITERATOR_INIT;
+    topologyEvent.neighborTableSize = 0;
+    topologyEvent.childTableSize = 0;
+
+    while (otThreadGetNextNeighborInfo(mOTInst, &iter, &neighborInfo[iter]) == OT_ERROR_NONE)
+    {
+        topologyEvent.neighborTableSize++;
+        if (neighborInfo[iterCopy].mIsChild)
+        {
+            topologyEvent.childTableSize++;
+        }
+	iterCopy = iter;
+    }
+
+    eventId = nl::LogEvent(&topologyEvent);
+    WeaveLogProgress(DeviceLayer, "OpenThread Full Topology event: %u\n", eventId);
+
+    // TODO:
+    // TopoFullLogEntries(eventId, entryTable, topologyEvent.neighborTableSize);
+    LogThreadTopologyEntries(eventId, neighborInfo, topologyEvent.neighborTableSize);
+
+    Impl()->UnlockThreadStack();
+
+exit:
+    if (err != WEAVE_NO_ERROR)
+    {
+        WeaveLogError(DeviceLayer, "GetAndLogThreadTopologyFull failed: %s", nl::ErrorStr(err));
+    }
+    return err;
+}
+
+#if 1
+
+#define TELEM_PRINT_BUFFER_SIZE (64)
+
+static WEAVE_ERROR LogThreadTopologyEntries(nl::Weave::Profiles::DataManagement_Current::event_id_t parentEventId,
+                                            otNeighborInfo *neighborInfoTable, uint32_t neighborInfoTableSize)
+{
+    WEAVE_ERROR err = WEAVE_NO_ERROR;
+    nl::Weave::Profiles::DataManagement_Current::EventOptions opts(true);
+    nl::Weave::Profiles::DataManagement_Current::event_id_t eventId;
+    TelemetryNetworkWpanTrait::TopoEntryEvent topologyEntryEvent = { 0 };
+    char printBuf[TELEM_PRINT_BUFFER_SIZE];
+
+    VerifyOrExit(neighborInfoTable != NULL, err = WEAVE_ERROR_INVALID_ARGUMENT);
+
+    // Populate the event options so that the topo entries are linked to the
+    // actual topo full event.
+    opts.relatedEventID = parentEventId;
+    opts.relatedImportance = TelemetryNetworkWpanTrait::NetworkWpanTopoFullEvent::Schema.mImportance;
+
+    // Handle each event seperatly, this way we only need one TopoEntryEvent object, rather then
+    // creating n of them on the stack.
+    for (uint32_t i = 0; i < neighborInfoTableSize; i++)
+    {
+//        thci_neighbor_child_info_t * entry   = &aEntryTable[i];
+        otNeighborInfo * neighbor            = &neighborInfoTable[i];
+
+        topologyEntryEvent.extAddress.mBuf   = neighbor->mExtAddress.m8;
+        topologyEntryEvent.extAddress.mLen   = sizeof(uint64_t);
+
+        topologyEntryEvent.rloc16            = neighbor->mRloc16;
+        topologyEntryEvent.linkQualityIn     = neighbor->mLinkQualityIn;
+        topologyEntryEvent.averageRssi       = neighbor->mAverageRssi;
+        topologyEntryEvent.age               = neighbor->mAge;
+        topologyEntryEvent.rxOnWhenIdle      = neighbor->mRxOnWhenIdle;
+//        topologyEntryEvent.fullFunction      = neighbor->mFullThreadDevice;
+        topologyEntryEvent.fullFunction      = true;
+        topologyEntryEvent.secureDataRequest = neighbor->mSecureDataRequest;
+        topologyEntryEvent.fullNetworkData   = neighbor->mFullNetworkData;
+        topologyEntryEvent.lastRssi          = neighbor->mLastRssi;
+        topologyEntryEvent.linkFrameCounter  = neighbor->mLinkFrameCounter;
+        topologyEntryEvent.mleFrameCounter   = neighbor->mMleFrameCounter;
+        topologyEntryEvent.isChild           = neighbor->mIsChild;
+
+        if (topologyEntryEvent.isChild)
+        {
+//            topologyEntryEvent.timeout            = entry->mTimeout;
+//            topologyEntryEvent.networkDataVersion = entry->mNetworkDataVersion;
+
+            topologyEntryEvent.SetTimeoutPresent();
+            topologyEntryEvent.SetNetworkDataVersionPresent();
+        }
+        else
+        {
+            topologyEntryEvent.SetTimeoutNull();
+            topologyEntryEvent.SetNetworkDataVersionNull();
+        }
+
+        eventId = nl::LogEvent(&topologyEntryEvent, opts);
+        WeaveLogProgress(DeviceLayer, "TopoEntry[%u] Event ID: %ld\n", i, eventId);
+
+        if (topologyEntryEvent.isChild)
+        {
+//            snprintf(printBuf, TELEM_PRINT_BUFFER_SIZE, ", Timeout: %10lu NetworkDataVersion: %3d", entry->mTimeout,
+//                     entry->mNetworkDataVersion);
+        }
+        else
+        {
+            printBuf[0] = 0;
+        }
+
+        // These logs are used in log parsing to obtain children and neighbors where commandline
+        // is not available. If you change these log lines, update the regex in pyrite in the file below
+        // https://stash.nestlabs.com/projects/PLATFORM/repos/pyrite/browse/pyrite/antigua/messaging/ncp_neighbor_parser.py
+        // These logs should match the logs from the nlnetworktools:
+        // https://stash.nestlabs.com/projects/PLATFORM/repos/nlnetworktools/browse/src/nlnetworktelemetry-wpan-topology.cpp
+        WeaveLogProgress(DeviceLayer,
+                         "TopoEntry [%u] %02X%02X:%02X%02X:%02X%02X:%02X%02X RLOC: %04X, Age: %3d, "
+                         "LQI: %1d, AvgRSSI: %3d, LastRSSI: %3d, LinkFrameCounter: %10d, MleFrameCounter: %10d, "
+                         "RxOnWhenIdle: %c, SecureDataRequest: %c, FullFunction: %c, FullNetworkData: %c, "
+                         "IsChild: %c%s\n",
+                         i, neighbor->mExtAddress.m8[0], neighbor->mExtAddress.m8[1], neighbor->mExtAddress.m8[2],
+                         neighbor->mExtAddress.m8[3], neighbor->mExtAddress.m8[4], neighbor->mExtAddress.m8[5],
+                         neighbor->mExtAddress.m8[6], neighbor->mExtAddress.m8[7], neighbor->mRloc16, neighbor->mAge,
+                         neighbor->mLinkQualityIn, neighbor->mAverageRssi, neighbor->mLastRssi, neighbor->mLinkFrameCounter,
+                         neighbor->mMleFrameCounter, neighbor->mRxOnWhenIdle ? 'Y' : 'n', neighbor->mSecureDataRequest ? 'Y' : 'n',
+//                         neighbor->mFullThreadDevice ? 'Y' : 'n', neighbor->mFullNetworkData ? 'Y' : 'n',
+                         'Y', neighbor->mFullNetworkData ? 'Y' : 'n',
+                         neighbor->mIsChild ? 'Y' : 'n',
+                         printBuf);
+    }
+
+exit:
+    return err;
+}
+#endif
 
 template<class ImplClass>
 WEAVE_ERROR GenericThreadStackManagerImpl_OpenThread<ImplClass>::DoInit(otInstance * otInst)

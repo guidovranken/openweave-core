@@ -62,6 +62,8 @@ extern void LogOpenThreadPacket(const char * titleStr, otMessage * pkt);
 extern bool IsOpenThreadMeshLocalAddress(otInstance * otInst, const IPAddress & addr);
 extern const char * OpenThreadRoleToStr(otDeviceRole role);
 
+// extern void LogWpanParentRespInfoTopology(nl::Weave::System::Layer *aLayer, void *aAppState, nl::Weave::System::Error aError);
+
 inline otIp6Address ToOpenThreadIP6Address(const IPAddress & addr)
 {
     otIp6Address otAddr;
