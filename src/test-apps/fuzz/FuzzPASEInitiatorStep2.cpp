@@ -63,17 +63,6 @@ do { \
     } \
 } while (0)
 
-#ifdef WEAVE_FUZZING_ENABLED
-extern "C"
-{
-    int RAND_bytes(unsigned char *buf, int num)
-    {
-        memset(buf, 'A', num);
-        return 1;
-    }
-}
-#endif // WEAVE_FUZZING_ENABLED
-
 static const char testName[] = "Message Substitution Fuzzing";
 static const char testPassword[] = "TestPassword";
 

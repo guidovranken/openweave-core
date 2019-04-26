@@ -1935,6 +1935,9 @@ NL_WITH_OPTIONAL_INTERNAL_PACKAGE([OpenSSL],
         #              native system version.
     
         PROSPECTIVE_CFLAGS="-fvisibility=hidden"
+        if test "${enable_fuzzing}" = "yes"; then
+            PROSPECTIVE_CFLAGS+=" -DPREDICT"
+        fi
         PROSPECTIVE_CXXFLAGS="-fvisibility-inlines-hidden"
     
         AX_CHECK_COMPILER_OPTIONS([C],             VISIBILITY_CFLAGS,      ${PROSPECTIVE_CFLAGS})
