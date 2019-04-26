@@ -128,6 +128,7 @@ check_PROGRAMS                                 = \
     FuzzPASEInitiatorStep2                       \
     FuzzPASEKeyConfirm                           \
     FuzzCertificateConversion                    \
+    FuzzASN1                    \
     $(NULL)
 
 
@@ -143,6 +144,7 @@ noinst_PROGRAMS                                = \
     FuzzPASEInitiatorStep2                       \
     FuzzPASEKeyConfirm                           \
     FuzzCertificateConversion                    \
+    FuzzASN1                    \
     $(NULL)
 
 # The additional environment variables and their values that will be
@@ -189,6 +191,10 @@ FuzzPASEKeyConfirm_LDADD                 = libFuzzUtil.a $(TEST_COMMON_LDADD) $(
 FuzzCertificateConversion_SOURCES        = FuzzCertificateConversion.cpp
 FuzzCertificateConversion_LDFLAGS        = $(AM_CPPFLAGS)
 FuzzCertificateConversion_LDADD          = libFuzzUtil.a $(top_builddir)/src/tools/weave/libWeaveTool.a $(TEST_COMMON_LDADD) $(COMMON_LDADD) 
+
+FuzzASN1_SOURCES        = FuzzASN1.cpp
+FuzzASN1_LDFLAGS        = $(AM_CPPFLAGS)
+FuzzASN1_LDADD          = libFuzzUtil.a $(top_builddir)/src/tools/weave/libWeaveTool.a $(TEST_COMMON_LDADD) $(COMMON_LDADD) 
 
 # Targets and commands for installing and uninstalling the bin_LINKS
 # programs as symbolic links which are trampolined through an
