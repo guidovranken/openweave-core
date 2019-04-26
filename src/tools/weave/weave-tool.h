@@ -149,7 +149,7 @@ extern int gNIDWeaveServiceEndpointId;
 extern int gNIDWeaveCAId;
 extern int gNIDWeaveSoftwarePublisherId;
 
-
+#ifndef WEAVE_FUZZING_ENABLED
 #define ReportOpenSSLErrorAndExit(FUNCT_NAME, ACTION) \
 do \
 { \
@@ -158,6 +158,15 @@ do \
     ACTION; \
     goto exit; \
 } while (0)
+#else
+#define ReportOpenSSLErrorAndExit(FUNCT_NAME, ACTION) \
+do \
+{ \
+    ACTION; \
+    goto exit; \
+} while (0)
+#endif
+
 
 
 #endif /* WEAVE_TOOL_H_ */

@@ -187,7 +187,9 @@ uint8_t *Base64Decode(const uint8_t *inData, uint32_t inDataLen, uint8_t *outBuf
     outDataLen = nl::Base64Decode32((const char *)inData, inDataLen, res);
     if (outDataLen == UINT32_MAX)
     {
+#ifndef WEAVE_FUZZING_ENABLED
         fprintf(stderr, "Base-64 decode error\n");
+#endif
         if (res != outBuf)
             free(res);
         ExitNow(res = NULL);
