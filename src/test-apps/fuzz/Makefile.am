@@ -129,6 +129,7 @@ check_PROGRAMS                                 = \
     FuzzPASEKeyConfirm                           \
     FuzzCertificateConversion                    \
     FuzzASN1                    \
+    FuzzTLVReader                    \
     $(NULL)
 
 
@@ -145,6 +146,7 @@ noinst_PROGRAMS                                = \
     FuzzPASEKeyConfirm                           \
     FuzzCertificateConversion                    \
     FuzzASN1                    \
+    FuzzTLVReader                    \
     $(NULL)
 
 # The additional environment variables and their values that will be
@@ -195,6 +197,10 @@ FuzzCertificateConversion_LDADD          = libFuzzUtil.a $(top_builddir)/src/too
 FuzzASN1_SOURCES        = FuzzASN1.cpp
 FuzzASN1_LDFLAGS        = $(AM_CPPFLAGS)
 FuzzASN1_LDADD          = libFuzzUtil.a $(top_builddir)/src/tools/weave/libWeaveTool.a $(TEST_COMMON_LDADD) $(COMMON_LDADD) 
+
+FuzzTLVReader_SOURCES        = FuzzTLVReader.cpp
+FuzzTLVReader_LDFLAGS        = $(AM_CPPFLAGS)
+FuzzTLVReader_LDADD          = libFuzzUtil.a $(top_builddir)/src/tools/weave/libWeaveTool.a $(TEST_COMMON_LDADD) $(COMMON_LDADD) 
 
 # Targets and commands for installing and uninstalling the bin_LINKS
 # programs as symbolic links which are trampolined through an
